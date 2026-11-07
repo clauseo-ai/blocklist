@@ -1,0 +1,12 @@
+################################################################
+# abuse.ch URLhaus Database Dump (CSV - online URLs only)      #
+# Last updated: 2026-11-07 05:00:01 UTC                        #
+################################################################
+#
+http://both.example.net/a.exe
+http://MALWARE.Example.COM:8080/x
+https://user:pass@creds.example.org/payload
+http://[2001:db8::2]:81/bin
+http://198.51.100.7/i.sh
+http://bücher.example/dl
+http://dot.example.net./y

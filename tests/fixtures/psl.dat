@@ -1,0 +1,21 @@
+// Test subset of the Public Suffix List (https://publicsuffix.org/list/), MPL-2.0.
+// ===BEGIN ICANN DOMAINS===
+com
+net
+org
+uk
+co.uk
+jp
+// wildcard and exception rules
+*.kawasaki.jp
+!city.kawasaki.jp
+ck
+*.ck
+!www.ck
+// an IDN rule, written in Unicode as the real list does
+рф
+// ===END ICANN DOMAINS===
+// ===BEGIN PRIVATE DOMAINS===
+blogspot.com
+github.io
+// ===END PRIVATE DOMAINS===

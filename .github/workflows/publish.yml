@@ -1,0 +1,104 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Build, sign and publish the Clauseo block list (format: SPEC.md).
+# Any failing step stops the job before the upload, so the current assets stay.
+name: publish
+
+on:
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: publish-blocklist
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      OUT: ${{ github.workspace }}/out
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Require minisign.pub
+        run: |
+          if [ ! -s minisign.pub ]; then
+            echo "::error::minisign.pub is missing or empty; refusing to build or publish"
+            echo "**Failed:** minisign.pub is missing from the repo. Nothing was published." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+      - name: Install minisign
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y minisign
+          minisign -v
+
+      - name: Unit tests
+        run: python3 -m unittest discover -s tests
+
+      - name: Count the current asset (verified)
+        id: previous
+        run: |
+          set -euo pipefail
+          if ! count=$(scripts/previous-count.sh "$RUNNER_TEMP/previous"); then
+            echo "**Failed:** the current asset could not be fetched or its signature did not verify with minisign.pub. Nothing was published." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+
+      - name: Build
+        id: build
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PREVIOUS: ${{ steps.previous.outputs.count }}
+        run: |
+          set -euo pipefail
+          args=(--out-dir "$OUT")
+          if [ "$PREVIOUS" != none ]; then
+            args+=(--previous-entries "$PREVIOUS")
+          fi
+          comment=$(python3 build.py "${args[@]}")
+          case "$comment" in
+            "clauseo-blocklist v1 generated="*" entries="*) ;;
+            *) echo "::error::unexpected trusted comment: $comment"; exit 1 ;;
+          esac
+          echo "trusted_comment=$comment" >> "$GITHUB_OUTPUT"
+
+      - name: Sign
+        env:
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+          MINISIGN_PASSWORD: ${{ secrets.MINISIGN_PASSWORD }}
+          TRUSTED_COMMENT: ${{ steps.build.outputs.trusted_comment }}
+        run: KEY_FILE="$RUNNER_TEMP/minisign.key" scripts/sign.sh "$OUT/blocklist-v1.txt.gz" "$TRUSTED_COMMENT"
+
+      - name: Delete the secret key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/minisign.key"
+
+      - name: Verify
+        env:
+          TRUSTED_COMMENT: ${{ steps.build.outputs.trusted_comment }}
+        run: scripts/verify.sh "$OUT/blocklist-v1.txt.gz" "$OUT/blocklist-v1.txt.gz.minisig" "$TRUSTED_COMMENT"
+
+      - name: Upload to the current release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if ! gh release view current >/dev/null 2>&1; then
+            gh release create current \
+              --title "Clauseo block list" \
+              --notes "The signed Clauseo block list, rebuilt every 6 hours. Its two assets are replaced in place on each run. Format, sources, licences and how to verify: https://github.com/${GH_REPO}#readme" \
+              --target "$GITHUB_SHA"
+          fi
+          gh release upload current "$OUT/blocklist-v1.txt.gz" "$OUT/blocklist-v1.txt.gz.minisig" --clobber
+          echo "Published to release \`current\`." >> "$GITHUB_STEP_SUMMARY"
