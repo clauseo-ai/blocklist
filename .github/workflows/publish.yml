@@ -100,5 +100,6 @@ jobs:
               --notes "The signed Clauseo block list, rebuilt every 6 hours. Its two assets are replaced in place on each run. Format, sources, licences and how to verify: https://github.com/${GH_REPO}#readme" \
               --target "$GITHUB_SHA"
           fi
-          gh release upload current "$OUT/blocklist-v1.txt.gz" "$OUT/blocklist-v1.txt.gz.minisig" --clobber
+          # Uploads under temporary names, then swaps each asset into place (scripts/replace-assets.sh).
+          scripts/replace-assets.sh current "$OUT/blocklist-v1.txt.gz" "$OUT/blocklist-v1.txt.gz.minisig"
           echo "Published to release \`current\`." >> "$GITHUB_STEP_SUMMARY"
